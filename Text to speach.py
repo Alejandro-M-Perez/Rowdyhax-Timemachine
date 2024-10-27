@@ -42,7 +42,7 @@ def play_stream(audio_stream, use_ffmpeg=True):
     player_process.wait()
 
 def send_tts_request(text):
-    DEEPGRAM_URL = f"https://api.beta.deepgram.com/v1/speak?model={MODEL_NAME}&performance=some&encoding=linear16&sample_rate=24000"
+    DEEPGRAM_URL = f"https://api.beta.deepgram.com/v1/speak?model={"aura-orion-en"}&performance=some&encoding=linear16&sample_rate=24000"
     
     headers = {
         "Authorization": f"Token {DG_API_KEY}",
@@ -50,9 +50,10 @@ def send_tts_request(text):
     }
     
     payload = {
-        "text": text,
-        "voice": MODEL_NAME
+        "text": "This is a test of the Deepgram TTS API.",
+        "voice": "aura-orion-en"
     }
+    print(payload)
     
     start_time = time.time()  # Record the time before sending the request
     first_byte_time = None  # Initialize a variable to store the time when the first byte is received
@@ -78,6 +79,8 @@ def send_tts_request(text):
         # print(f"Deepgram Performance Total (ms): {dg_performance_total_ms}ms")
 
         for chunk in r.iter_content(chunk_size=1024):
+            print("chunk recived")
+            print(type(chunk))
             if chunk:
                 if first_byte_time is None:  # Check if this is the first chunk received
                     first_byte_time = time.time()  # Record the time when the first byte is received
