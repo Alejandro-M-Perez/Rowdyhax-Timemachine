@@ -6,6 +6,8 @@ import requests
 import time
 import os
 
+from groq import Groq
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
@@ -24,91 +26,50 @@ from deepgram import (
     LiveTranscriptionEvents,
     LiveOptions,
     Microphone,
+    SpeakOptions
 )
+
+import pyaudio as pa
+import wave
+from playsound import playsound
 
 load_dotenv()
 
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),
+)
+
 name = input("Enter the name of the historical figure you want to talk to: ")
-system_prompt = f"You are {name}. You are a historical figure. You are talking to a time traveler who arrived to your time in a silver car."
 
-def delete_files_on_start(wiki_images):
-    """Deletes the specified files upon program start."""
+print('Was ' + name + ' a man, answer with one word "True" or "False"')
 
-    for file_path in wiki_images:
-        try:
-            os.remove(file_path)
-            #print(f"File '{file_path}' deleted successfully.")
-        except FileNotFoundError:
-            print(f"File '{file_path}' not found.")
-        except Exception as e:
-            print(f"Error deleting '{file_path}': {e}")
-# set the folder name where images will be stored
-wiki_images = [os.path.join('wiki_images', f) for f in os.listdir('wiki_images') if os.path.isfile(os.path.join('wiki_images', f))]
-delete_files_on_start(wiki_images)
-my_folder = 'wiki_images'
+setup_question_1 = [
+        {
+            "role": "system",
+            "content": 'Is ' + name + ' male, answer "True" or "False"',
+        }
+]
 
-# create the folder in the current working directory
-# in which to store the downloaded images
-os.makedirs(my_folder, exist_ok=True)
+setup_question_completion = client.chat.completions.create(
+    model="llama-3.2-3b-preview",
+    messages=setup_question_1,
+    temperature=0,
+    max_tokens=1024,
+    top_p=1,
+    stream=False,
+)
 
-# front part of each Wikipedia URL
-base_url = 'https://en.wikipedia.org/wiki/'
+print("The model says: " + setup_question_completion.choices[0].message.content)
+output = setup_question_completion.choices[0].message.content
 
-# partial URLs for each desired Wikipedia page
-
-# Wikipedia API query string to get the main image on a page
-# (partial URL will be added to the end)
-query = 'http://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles='
-
-# get JSON data w/ API and extract image URL
-def get_image_url(partial_url):
-    try:
-        api_res = requests.get(query + partial_url).json()
-        first_part = api_res['query']['pages']
-        # this is a way around not knowing the article id number
-        for key, value in first_part.items():
-            if (value['original']['source']):
-                data = value['original']['source']
-                return data
-    except Exception as exc:
-        print(exc)
-        print("Partial URL: " + partial_url)
-        data = None
-    return data
-
-# download one image with URL obtained from API
-def download_image(the_url, the_page):
-    headers = {'User-Agent': 'RowdyHack_2024  Alejandromperez714@gmail.com)'}
-    res = requests.get(the_url, headers=headers)
-    res.raise_for_status()
-
-    # get original file extension for image
-    # by splitting on . and getting the final segment
-    file_ext = '.' + the_url.split('.')[-1].lower()
-
-    # save the image to folder - binary file - with desired filename
-    image_file = open(os.path.join(my_folder, os.path.basename(the_page + file_ext)), 'wb')
-
-    # download the image file 
-    # HT to Automate the Boring Stuff with Python, chapter 12 
-    for chunk in res.iter_content(100000):
-        image_file.write(chunk)
-    image_file.close()
-
-# loop to download main image for each page in list
-
-# get JSON data and extract image URL
-the_url = get_image_url(name)
-# if the URL is not None ...
-if (the_url):
-    # tell us where we are for the heck of it
-    
-    # download that image
-    download_image(the_url, name)
+if output == "True":
+    model = "aura-helios-en"
 else:
-    print("No image file for " + name)
-    
+    model = "aura-athena-en"
 
+print('The model is ' + model)
+
+system_prompt = f"You are {name}. You are a historical figure. a time traveler just arrived to your time in a silver car. keep your respose short and simple. keep the conversation going. keep your responses short"
 
 class LanguageModelProcessor:
     def __init__(self):
@@ -169,18 +130,74 @@ class TextToSpeech:
             "text": text
         }
 
-        player_command = ["ffplay", "-autoexit", "-", "-nodisp"]
-        player_process = subprocess.Popen(
-            player_command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            SPEAK_OPTIONS = {"text": text}
+            filename = "output.wav"
+
+            # STEP 1: Create a Deepgram client using the API key from environment variables
+            deepgram = DeepgramClient(api_key=os.getenv("DG_API_KEY"))
+
+            # STEP 2: Configure the options (such as model choice, audio configuration, etc.)
+            options = SpeakOptions(
+                model=model,
+                encoding="linear16",
+                container="wav"
+            )
+
+            # STEP 3: Call the save method on the speak property
+            response = deepgram.speak.v("1").save(filename, SPEAK_OPTIONS, options)
+            # Initialize PyAudio
+            p = pa.PyAudio()
+
+            # Open the WAV file
+            wf = wave.open(filename, 'rb')
+
+            # Define the callback function to play the audio
+            def callback(in_data, frame_count, time_info, status):
+                data = wf.readframes(frame_count)
+                return (data, pa.paContinue)
+
+            # Open a stream with the appropriate settings
+            stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
+                            channels=wf.getnchannels(),
+                            rate=wf.getframerate(),
+                            output=True,
+                            stream_callback=callback)
+
+            # Start the stream
+            stream.start_stream()
+
+            # Wait for the stream to finish
+            while stream.is_active():
+                time.sleep(0.01)
+
+            # Stop and close the stream
+            stream.stop_stream()
+            stream.close()
+
+            # Close PyAudio
+            p.terminate()
+
+            # Close the WAV file
+            wf.close()
+            os.remove("output.wav")
+            #print(response.to_json(indent=4))
+
+            player_command = ["ffplay", "-autoexit", "-", "-nodisp"]
+            player_process = subprocess.Popen(
+                player_command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+        except Exception as e:
+            print(f"Exception: {e}")
 
         start_time = time.time()  # Record the time before sending the request
         first_byte_time = None  # Initialize a variable to store the time when the first byte is received
 
-        with requests.post(DEEPGRAM_URL, stream=True, headers=headers, json=payload) as r:
+        '''with requests.post(DEEPGRAM_URL, stream=True, headers=headers, json=payload) as r:
             for chunk in r.iter_content(chunk_size=1024):
                 if chunk:
                     if first_byte_time is None:  # Check if this is the first chunk received
@@ -192,7 +209,7 @@ class TextToSpeech:
 
         if player_process.stdin:
             player_process.stdin.close()
-        player_process.wait()
+        player_process.wait()'''
 
 class TranscriptCollector:
     def __init__(self):

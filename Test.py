@@ -1,36 +1,35 @@
 import os
-from dotenv import load_dotenv
+import pyttsx3
+from gtts import gTTS
+import subprocess
+from playsound import playsound
 
-from deepgram import (
-    DeepgramClient,
-    SpeakOptions,
-)
-
-load_dotenv()
-
-SPEAK_OPTIONS = {"text": "Hello, how can I help you today?"}
-filename = "output.wav"
+audio = 'speech.mp3'
+language = 'en-uk'
 
 
-def main():
-    try:
-        # STEP 1: Create a Deepgram client using the API key from environment variables
-        deepgram = DeepgramClient(api_key=os.getenv("DG_API_KEY"))
+speech = gTTS(text = "I will speak this text", lang = language, slow = False)
+speech.save(audio)
+playsound(audio)
 
-        # STEP 2: Configure the options (such as model choice, audio configuration, etc.)
-        options = SpeakOptions(
-            model="aura-asteria-en",
-            encoding="linear16",
-            container="wav"
-        )
+def play_stream(audio_stream, use_ffmpeg=True):
+    player = "ffplay"
+    if not is_installed(player):
+        raise ValueError(f"{player} not found, necessary to stream audio.")
+    
+    player_command = ["ffplay", "-autoexit", "-", "-nodisp"]
+    player_process = subprocess.Popen(
+        player_command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
-        # STEP 3: Call the save method on the speak property
-        response = deepgram.speak.v("1").save(filename, SPEAK_OPTIONS, options)
-        print(response.to_json(indent=4))
-
-    except Exception as e:
-        print(f"Exception: {e}")
-
-
-if __name__ == "__main__":
-    main()
+    for chunk in audio_stream:
+        if chunk:
+            player_process.stdin.write(chunk)  # type: ignore
+            player_process.stdin.flush()  # type: ignore
+    
+    if player_process.stdin:
+        player_process.stdin.close()
+    player_process.wait()
