@@ -31,6 +31,85 @@ load_dotenv()
 name = input("Enter the name of the historical figure you want to talk to: ")
 system_prompt = f"You are {name}. You are a historical figure. You are talking to a time traveler who arrived to your time in a silver car."
 
+def delete_files_on_start(wiki_images):
+    """Deletes the specified files upon program start."""
+
+    for file_path in wiki_images:
+        try:
+            os.remove(file_path)
+            #print(f"File '{file_path}' deleted successfully.")
+        except FileNotFoundError:
+            print(f"File '{file_path}' not found.")
+        except Exception as e:
+            print(f"Error deleting '{file_path}': {e}")
+# set the folder name where images will be stored
+wiki_images = [os.path.join('wiki_images', f) for f in os.listdir('wiki_images') if os.path.isfile(os.path.join('wiki_images', f))]
+delete_files_on_start(wiki_images)
+my_folder = 'wiki_images'
+
+# create the folder in the current working directory
+# in which to store the downloaded images
+os.makedirs(my_folder, exist_ok=True)
+
+# front part of each Wikipedia URL
+base_url = 'https://en.wikipedia.org/wiki/'
+
+# partial URLs for each desired Wikipedia page
+
+# Wikipedia API query string to get the main image on a page
+# (partial URL will be added to the end)
+query = 'http://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles='
+
+# get JSON data w/ API and extract image URL
+def get_image_url(partial_url):
+    try:
+        api_res = requests.get(query + partial_url).json()
+        first_part = api_res['query']['pages']
+        # this is a way around not knowing the article id number
+        for key, value in first_part.items():
+            if (value['original']['source']):
+                data = value['original']['source']
+                return data
+    except Exception as exc:
+        print(exc)
+        print("Partial URL: " + partial_url)
+        data = None
+    return data
+
+# download one image with URL obtained from API
+def download_image(the_url, the_page):
+    headers = {'User-Agent': 'RowdyHack_2024  Alejandromperez714@gmail.com)'}
+    res = requests.get(the_url, headers=headers)
+    res.raise_for_status()
+
+    # get original file extension for image
+    # by splitting on . and getting the final segment
+    file_ext = '.' + the_url.split('.')[-1].lower()
+
+    # save the image to folder - binary file - with desired filename
+    image_file = open(os.path.join(my_folder, os.path.basename(the_page + file_ext)), 'wb')
+
+    # download the image file 
+    # HT to Automate the Boring Stuff with Python, chapter 12 
+    for chunk in res.iter_content(100000):
+        image_file.write(chunk)
+    image_file.close()
+
+# loop to download main image for each page in list
+
+# get JSON data and extract image URL
+the_url = get_image_url(name)
+# if the URL is not None ...
+if (the_url):
+    # tell us where we are for the heck of it
+    
+    # download that image
+    download_image(the_url, name)
+else:
+    print("No image file for " + name)
+    
+
+
 class LanguageModelProcessor:
     def __init__(self):
         self.llm = ChatGroq(temperature=0, model_name="mixtral-8x7b-32768", groq_api_key=os.getenv("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"))
