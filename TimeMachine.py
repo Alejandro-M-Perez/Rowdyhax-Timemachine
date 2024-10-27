@@ -5,7 +5,8 @@ import subprocess
 import requests
 import time
 import os
-
+import json
+from PIL import Image
 from groq import Groq
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -31,7 +32,7 @@ from deepgram import (
 
 import pyaudio as pa
 import wave
-from playsound import playsound
+#from playsound import playsound
 
 load_dotenv()
 
@@ -68,6 +69,89 @@ else:
     model = "aura-athena-en"
 
 print('The model is ' + model)
+class Image_Finder():
+    my_folder = 'wiki_images'
+    def __init__(self, name):
+        self.name = name
+    def delete_files_on_start(wiki_images):
+        """Deletes the specified files upon program start."""
+
+        for file_path in wiki_images:
+            try:
+                os.remove(file_path)
+                #print(f"File '{file_path}' deleted successfully.")
+            except FileNotFoundError:
+                print(f"File '{file_path}' not found.")
+            except Exception as e:
+                print(f"Error deleting '{file_path}': {e}")
+    # set the folder name where images will be stored
+    wiki_images = [os.path.join('wiki_images', f) for f in os.listdir('wiki_images') if os.path.isfile(os.path.join('wiki_images', f))]
+    delete_files_on_start(wiki_images)
+
+    # create the folder in the current working directory
+    # in which to store the downloaded images
+    os.makedirs(my_folder, exist_ok=True)
+
+    # front part of each Wikipedia URL
+    base_url = 'https://en.wikipedia.org/wiki/'
+
+    # partial URLs for each desired Wikipedia page
+
+    # Wikipedia API query string to get the main image on a page
+    # (partial URL will be added to the end)
+    query = 'http://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles='
+
+    # get JSON data w/ API and extract image URL
+    def get_image_url(partial_url):
+        try:
+            api_res = requests.get('http://en.wikipedia.org/w/api.php?action=query&prop=pageimages&format=json&piprop=original&titles=' + partial_url).json()
+            first_part = api_res['query']['pages']
+            # this is a way around not knowing the article id number
+            for key, value in first_part.items():
+                if (value['original']['source']):
+                    data = value['original']['source']
+                    return data
+        except Exception as exc:
+            print(exc)
+            print("Partial URL: " + partial_url)
+            data = None
+        return data
+
+    # download one image with URL obtained from API
+    def download_image(the_url, the_page, my_folder):
+        headers = {'User-Agent': 'RowdyHack_2024  Alejandromperez714@gmail.com)'}
+        res = requests.get(the_url, headers=headers)
+        res.raise_for_status()
+
+        # get original file extension for image
+        # by splitting on . and getting the final segment
+        file_ext = '.' + the_url.split('.')[-1].lower()
+
+        image_file = open(os.path.join(my_folder, os.path.basename("Input_Face" + file_ext)), 'wb')
+        
+
+        
+
+        # download the image file 
+        # HT to Automate the Boring Stuff with Python, chapter 12 
+        for chunk in res.iter_content(100000):
+            image_file.write(chunk)
+        image_file.close()
+        image=Image.open('wiki_images/Input_Face.jpg')
+        resized_image = image.resize((1080, 1080), Image.LANCZOS)
+        resized_image.save("wiki_images/Input_Face.jpg")
+    # loop to download main image for each page in list
+
+    # get JSON data and extract image URL
+    the_url = get_image_url(name)
+    # if the URL is not None ...
+    if (the_url):
+        # tell us where we are for the heck of it
+        
+        # download that image
+        download_image(the_url, name, my_folder)
+    else:
+        print("No image file for " + name)
 
 system_prompt = f"You are {name}. You are a historical figure. a time traveler just arrived to your time in a silver car. keep your respose short and simple. keep the conversation going. keep your responses short"
 
@@ -118,8 +202,7 @@ class TextToSpeech:
         return lib is not None
 
     def speak(self, text):
-        if not self.is_installed("ffplay"):
-            raise ValueError("ffplay not found, necessary to stream audio.")
+       
 
         DEEPGRAM_URL = f"https://api.deepgram.com/v1/speak?model={self.MODEL_NAME}&performance=some&encoding=linear16&sample_rate=24000"
         headers = {
@@ -180,7 +263,7 @@ class TextToSpeech:
 
             # Close the WAV file
             wf.close()
-            os.remove("output.wav")
+            #os.remove("output.wav")
             #print(response.to_json(indent=4))
 
             player_command = ["ffplay", "-autoexit", "-", "-nodisp"]
@@ -313,3 +396,35 @@ class ConversationManager:
 if __name__ == "__main__":
     manager = ConversationManager()
     asyncio.run(manager.main())
+class FaceMaker: 
+    files = [
+        ("input_face", open("wiki_images\Input_Face.jpg", "rb")),
+        ("input_audio", open("output.wav", "rb")),
+    ]
+    payload = {}
+
+    response = requests.post(
+        "https://api.gooey.ai/v2/Lipsync/form/?run_id=fecsii61rs6e&uid=fm165fOmucZlpa5YHupPBdcvDR02",
+        headers={
+            "Authorization": "Bearer " + os.environ["GOOEY_API_KEY"],
+        },
+        files=files,
+        data={"json": json.dumps(payload)},
+    )
+    assert respossnse.ok, response.content
+
+    video_url = "https://api.gooey.ai/v2/Lipsync/form/?run_id=fecsii61rs6e&uid=fm165fOmucZlpa5YHupPBdcvDR02"
+
+    # Send a GET request to the URL
+    response = requests.get(video_url, headers={
+        "Authorization": "Bearer " + os.environ["GOOEY_API_KEY"],
+    }, stream=True)
+
+    if response.status_code == 200:
+        # Save the content to a file in chunks
+        with open("downloaded_video.mp4", "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+        print("Video downloaded successfully.")
+    else:
+        print(f"Failed to download video. Status code: {response.status_code}")
